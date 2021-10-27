@@ -7,19 +7,23 @@ to a CoNLL-style dependency representation.
 """
 
 
-import re, io, ntpath, collections
+import re
+import io
+import os
+import ntpath
+import collections
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
 try:
-    from .feature_extraction import ParsedToken
+    from feature_extraction import ParsedToken
 except ImportError:
     from feature_extraction import ParsedToken
 
 # Add hardwired genre identifiers which appear as substring in filenames here
-GENRES = {"_news_":"news","_whow_":"whow","_voyage_":"voyage","_interview_":"interview",
-          "_bio_":"bio","_fiction_":"fiction","_academic_":"academic","_reddit_":"reddit",
-          "_speech_":"speech","_textbook_":"textbook","_vlog_":"vlog","_conversation_":"conversation",}
+GENRES = {"_news_": "news", "_whow_":"whow","_voyage_": "voyage", "_interview_": "interview",
+          "_bio_": "bio", "_fiction_": "fiction", "_academic_": "academic", "_reddit_": "reddit",
+          "_speech_": "speech", "_textbook_": "textbook", "_vlog_": "vlog", "_conversation_": "conversation", }
 
 
 class SIGNAL:
@@ -32,7 +36,7 @@ class SIGNAL:
         return self.type + "/" + self.subtype + " (" + self.tokens + ")"
 
     def __str__(self):
-        return "|".join([self.type,self.subtype,self.tokens])
+        return "|".join([self.type, self.subtype, self.tokens])
 
 
 class NODE:
@@ -46,11 +50,11 @@ class NODE:
         self.depth = depth
         self.dist = 0
         self.domain = 0  # Minimum sorted covering multinuc domain priority
-        self.kind = kind #edu, multinuc or span node
-        self.text = text #text of an edu node; empty for spans/multinucs
+        self.kind = kind # edu, multinuc or span node
+        self.text = text # text of an edu node; empty for spans/multinucs
         self.token_count = text.count(" ") + 1
         self.relname = relname
-        self.relkind = relkind #rst (a.k.a. satellite), multinuc or span relation
+        self.relkind = relkind # rst (a.k.a. satellite), multinuc or span relation
         self.sortdepth = depth
         self.children = []
         self.leftmost_child = ""
@@ -75,7 +79,7 @@ class NODE:
         self.rebuild_parse()
         head_word = "_"
         if len(self.tokens) == 0:  # No token information
-            self.tokens.append(ParsedToken("1","_","_","_","_","0","_"))
+            self.tokens.append(ParsedToken("1", "_", "_", "_", "_", "0", "_"))
         head_func = "_"
 
         if feats:
@@ -96,22 +100,24 @@ class NODE:
             last_tok = self.tokens[-1].lemma
             if self.heading == "head":
                 self.heading = "heading=heading"
-            if self.caption== "caption":
+            if self.caption == "caption":
                 self.heading = "caption=caption"
-            if self.para== "open_para":
+            if self.para == "open_para":
                 self.para = "para=para"
-            if self.item== "open_item":
+            if self.item == "open_item":
                 self.item = "item=item"
-            if self.list== "ordered":
+            if self.list == "ordered":
                 self.list = "list=ordered"
             if self.list== "unordered":
                 self.list = "list=unordered"
-            if self.caption== "date":
+            if self.caption == "date":
                 self.heading = "date=date"
             if self.subord in ["LEFT","RIGHT"]:
                 self.subord = "subord=" + self.subord
-            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, "stype="+self.s_type, "len="+str(len(self.tokens)), head_func, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
-            if len(feats)==0:
+            feats = "|".join(feat for feat in [first_pos, head_word, head_pos, "stype="+self.s_type,
+                                               "len="+str(len(self.tokens)), head_func, self.subord, self.heading,
+                                               self.caption, self.para, self.item, self.date] if feat != "_")
+            if len(feats) == 0:
                 feats = "_"
         else:
             feats = "_"
@@ -138,14 +144,15 @@ class NODE:
         else:
             caps = "nocaps"
         last_tok = self.tokens[-1].lemma
-        feats = "|".join(feat for feat in [str(len(self.tokens)), head_func, self.subord, self.heading, self.caption, self.para, self.item, self.date] if feat != "_")
-        if len(feats)==0:
+        feats = "|".join(feat for feat in [str(len(self.tokens)), head_func, self.subord, self.heading, self.caption,
+                                           self.para, self.item, self.date] if feat != "_")
+        if len(feats) == 0:
             feats = "_"
 
         return "\t".join([self.id, first, head_word, self.s_type, first_pos, feats, self.dep_parent, self.dep_rel, "_", self.parse])
 
     def __repr__(self):
-        return "\t".join([str(self.id),str(self.parent),self.relname,self.text])
+        return "\t".join([str(self.id), str(self.parent), self.relname, self.text])
 
 
 def get_left_right(node_id, nodes, min_left, max_right, rel_hash):
@@ -166,7 +173,7 @@ def get_left_right(node_id, nodes, min_left, max_right, rel_hash):
             if parent.right < max_right:
                 parent.right = max_right
         elif nodes[node_id].relname in rel_hash:
-            if parent.kind == "multinuc" and rel_hash[nodes[node_id].relname] =="multinuc":
+            if parent.kind == "multinuc" and rel_hash[nodes[node_id].relname] == "multinuc":
                 if parent.left > min_left or parent.left == 0:
                     parent.left = min_left
                 if parent.right < max_right:
@@ -181,9 +188,9 @@ def get_depth(orig_node, probe_node, nodes):
     """
     if probe_node.parent != "0":
         parent = nodes[probe_node.parent]
-        if parent.kind != "edu" and (probe_node.relname == "span" or parent.kind == "multinuc" and probe_node.relkind =="multinuc"):
+        if parent.kind != "edu" and (probe_node.relname == "span" or parent.kind == "multinuc" and probe_node.relkind == "multinuc"):
             orig_node.depth += 1
-            orig_node.sortdepth +=1
+            orig_node.sortdepth += 1
         elif parent.kind == "edu":
             orig_node.sortdepth += 1
         get_depth(orig_node, parent, nodes)
@@ -207,11 +214,11 @@ def get_distance(node, parent, nodes):
             if head in encountered:
                 if nodes[head].kind == "multinuc" and node.dep_rel.endswith("_m"):  # multinucs should have priority against tying incoming RST rels
                     dist2 -= 1
-                return dist2 #+ encountered[head]
+                return dist2 # + encountered[head]
             else:
                 dist2 += 1
                 head = nodes[head].parent
-        return dist2 #+ encountered[head]
+        return dist2 # + encountered[head]
     else:
         # direct ancestry
         return 0  # dist
@@ -266,7 +273,6 @@ def read_rst(data, rel_hash, as_text=False):
     node_elements = xmldoc.getElementsByTagName("group")
     for element in node_elements:
         element_types[element.attributes["id"].value] = element.attributes["type"].value
-
 
     # Collect all children of multinuc parents to prioritize which potentially multinuc relation they have
     item_list = xmldoc.getElementsByTagName("segment") + xmldoc.getElementsByTagName("group")
@@ -346,7 +352,8 @@ def read_rst(data, rel_hash, as_text=False):
                             del multinuc_children[parent][key]
 
             if parent in element_types:
-                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and (relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
+                if element_types[parent] == "multinuc" and relname + "_m" in rel_hash and \
+                        (relname in multinuc_children[parent] or len(multinuc_children[parent]) == 0):
                     relname = relname + "_m"
                 elif relname != "span":
                     relname = relname + "_r"
@@ -397,7 +404,7 @@ def read_rst(data, rel_hash, as_text=False):
         nid = str(sig.attributes["source"].value)
         if nid not in elements:
             raise IOError("A signal element refers to source " + nid + " which is not found in the document\n")
-        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value,sig.attributes["subtype"].value,sig.attributes["tokens"].value))
+        elements[nid].signals.append(SIGNAL(sig.attributes["type"].value, sig.attributes["subtype"].value, sig.attributes["tokens"].value))
 
     return elements
 
@@ -431,7 +438,7 @@ def seek_other_edu_child(nodes, source, exclude, block):
             if nodes[child_id].kind == "edu" and child_id != exclude and (nodes[source].kind != "span" or nodes[child_id].relname == "span") and \
                     not (nodes[source].kind == "multinuc" and nodes[source].leftmost_child == exclude) and \
                     (nodes[nodes[child_id].parent].kind not in ["span","multinuc"]):
-                    #not (nodes[child_id].parent == nodes[exclude].parent and nodes[source].kind == "multinuc" and int(child_id) > int(exclude)):  # preclude right pointing rel between multinuc siblings
+                    # not (nodes[child_id].parent == nodes[exclude].parent and nodes[source].kind == "multinuc" and int(child_id) > int(exclude)):  # preclude right pointing rel between multinuc siblings
                 return child_id
             # Found a non-terminal child
             elif child_id != exclude:
@@ -474,30 +481,30 @@ def find_dep_head(nodes, source, exclude, block):
             return find_dep_head(nodes, parent, exclude, block)
 
 
-def get_nonspan_rel(nodes,node):
+def get_nonspan_rel(nodes, node):
     if node.parent == "0":  # Reached the root
         return "ROOT"
     elif nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child == node.id:
         return get_nonspan_rel(nodes, nodes[node.parent])
     elif nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child != node.id:
-        return node#.relname
+        return node  # .relname
     elif nodes[node.parent].relname != "span":
         grandparent = nodes[node.parent].parent
         if grandparent == "0":
             return "ROOT"
         elif not (nodes[grandparent].kind == "multinuc" and nodes[node.parent].left == nodes[grandparent].left):
-            return nodes[node.parent]#.relname
+            return nodes[node.parent]  # .relname
         else:
             return get_nonspan_rel(nodes,nodes[node.parent])
     else:
         if node.relname.endswith("_r"):
-            return node#.relname
+            return node  # .relname
         else:
             return get_nonspan_rel(nodes,nodes[node.parent])
 
 
 def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"):
-    nodes = read_rst(rstfile,{},as_text=as_text)
+    nodes = read_rst(rstfile, {}, as_text=as_text)
     out_graph = []
     if rstfile.endswith("rs3"):
         out_file = rstfile.replace(".rs3",".rsd")
@@ -506,19 +513,19 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
     if docname is not None:
         out_file = docname + ".rsd"
 
-    dep_root=xml_dep_root
+    dep_root = xml_dep_root
     if dep_root != "":
         try:
-            from .feature_extraction import get_tok_info
+            from feature_extraction import get_tok_info
         except ImportError:
             from feature_extraction import get_tok_info
-        conll_tokens = get_tok_info(ntpath.basename(out_file).replace(".rsd",""),xml_dep_root)
+        conll_tokens = get_tok_info(ntpath.basename(out_file).replace(".rsd", ""), xml_dep_root)
         feats = True
     else:
         feats = False
 
     # Add tokens to terminal nodes
-    if isinstance(nodes,str):
+    if isinstance(nodes, str):
         pass
     edus = list(nodes[nid] for nid in nodes if nodes[nid].kind=="edu")
     edus.sort(key=lambda x: int(x.id))
@@ -566,7 +573,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
         if node.parent == "0":
             new_rel = "ROOT"
         elif node.relname == "span" or (nodes[node.parent].kind == "multinuc" and nodes[node.parent].leftmost_child == nid):
-            new_rel = get_nonspan_rel(nodes,node)
+            new_rel = get_nonspan_rel(nodes, node)
             if new_rel != "ROOT":
                 sigs = new_rel.signals
                 new_rel = new_rel.relname
@@ -577,9 +584,9 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
     for nid in nodes:
         node = nodes[nid]
         if node.kind == "edu":
-            dep_parent = find_dep_head(nodes,nid,nid,[])
+            dep_parent = find_dep_head(nodes, nid, nid, [])
             if dep_parent is None:
-                #This is the root
+                # This is the root
                 node.dep_parent = "0"
                 node.dep_rel = "ROOT"
             else:
@@ -613,9 +620,10 @@ if __name__ == "__main__":
     desc = "Script to convert Rhetorical Structure Theory trees \n from .rs3 format to a dependency representation.\nExample usage:\n\n" + \
             "python rst2dep.py <INFILES>"
     parser = ArgumentParser(description=desc)
-    parser.add_argument("infiles",action="store",help="file name or glob pattern, e.g. *.rs3")
-    parser.add_argument("-r","--root",action="store",dest="root",default="",help="optional: path to corpus root folder containing a directory dep/ and \n"+
-                                                           "a directory xml/ containing additional corpus formats")
+    parser.add_argument("infiles", action="store", help="file name or glob pattern, e.g. *.rs3")
+    parser.add_argument("-r", "--root", action="store", dest="root", default="",
+                        help="optional: path to corpus root folder containing a directory dep/ and "
+                             "\n a directory xml/ containing additional corpus formats")
 
     options = parser.parse_args()
 
@@ -625,10 +633,13 @@ if __name__ == "__main__":
         from glob import glob
         files = glob(inpath)
     else:
-        files = [inpath]
+        if inpath.endswith(os.sep):
+            files = [file for file in os.listdir(inpath) if file.endswith(".rs3")]
+        else:
+            files = [file for file in os.listdir(inpath+os.sep) if file.endswith(".rs3")]
 
     for rstfile in files:
-        output = make_rsd(rstfile,options.root)
+        output = make_rsd(inpath+rstfile, options.root)
+        print(f"o Processing {rstfile}")
         with io.open(rstfile.replace("rs3","rsd"),'w',encoding="utf8",newline="\n") as f:
             f.write(output)
-
