@@ -12,6 +12,7 @@ import io
 import os
 import ntpath
 import collections
+import sys
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser
@@ -214,11 +215,11 @@ def get_distance(node, parent, nodes):
             if head in encountered:
                 if nodes[head].kind == "multinuc" and node.dep_rel.endswith("_m"):  # multinucs should have priority against tying incoming RST rels
                     dist2 -= 1
-                return dist2 # + encountered[head]
+                return dist2  # + encountered[head]
             else:
                 dist2 += 1
                 head = nodes[head].parent
-        return dist2 # + encountered[head]
+        return dist2  # + encountered[head]
     else:
         # direct ancestry
         return 0  # dist
@@ -226,7 +227,7 @@ def get_distance(node, parent, nodes):
 
 def read_rst(data, rel_hash, as_text=False):
     if not as_text:
-        data = io.open(data, encoding="utf8").read()
+        data = io.open(data, encoding="utf8").read().replace("&", "&amp;")
     try:
         xmldoc = minidom.parseString(data)
     except ExpatError:
@@ -500,14 +501,15 @@ def get_nonspan_rel(nodes, node):
         if node.relname.endswith("_r"):
             return node  # .relname
         else:
-            return get_nonspan_rel(nodes,nodes[node.parent])
+            return get_nonspan_rel(nodes, nodes[node.parent])
 
 
-def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"):
+def make_rsd(rstfile, xml_dep_root, as_text=False, docname=None, out_mode="conll"):
     nodes = read_rst(rstfile, {}, as_text=as_text)
+
     out_graph = []
     if rstfile.endswith("rs3"):
-        out_file = rstfile.replace(".rs3",".rsd")
+        out_file = rstfile.replace(".rs3", ".rsd")
     else:
         out_file = rstfile + ".rsd"
     if docname is not None:
@@ -527,7 +529,7 @@ def make_rsd(rstfile, xml_dep_root,as_text=False, docname=None, out_mode="conll"
     # Add tokens to terminal nodes
     if isinstance(nodes, str):
         pass
-    edus = list(nodes[nid] for nid in nodes if nodes[nid].kind=="edu")
+    edus = list(nodes[nid] for nid in nodes if nodes[nid].kind == "edu")
     edus.sort(key=lambda x: int(x.id))
     token_reached = 0
     for edu in edus:
@@ -621,25 +623,32 @@ if __name__ == "__main__":
             "python rst2dep.py <INFILES>"
     parser = ArgumentParser(description=desc)
     parser.add_argument("infiles", action="store", help="file name or glob pattern, e.g. *.rs3")
+    parser.add_argument("-o", "--output", action="store", help="path to the dir where the converted *.rsd files are stored")
     parser.add_argument("-r", "--root", action="store", dest="root", default="",
                         help="optional: path to corpus root folder containing a directory dep/ and "
                              "\n a directory xml/ containing additional corpus formats")
 
     options = parser.parse_args()
-
     inpath = options.infiles
+    outpath = options.output
+
+    if not os.path.isdir(f"{outpath+os.sep}{inpath.split(os.sep)[-1].replace('rs3', 'rsd')}"):
+        os.mkdir(f"{outpath+os.sep}{inpath.split(os.sep)[-1].replace('rs3', 'rsd')}")
 
     if "*" in inpath:
         from glob import glob
         files = glob(inpath)
     else:
-        if inpath.endswith(os.sep):
-            files = [file for file in os.listdir(inpath) if file.endswith(".rs3")]
-        else:
-            files = [file for file in os.listdir(inpath+os.sep) if file.endswith(".rs3")]
+        if not inpath.endswith(os.sep):
+            inpath = inpath + os.sep
+        files = [os.path.join(inpath, file) for file in os.listdir(inpath) if file.endswith(".rs3")]
 
+    file_count = 0
     for rstfile in files:
-        output = make_rsd(inpath+rstfile, options.root)
-        print(f"o Processing {rstfile}")
-        with io.open(rstfile.replace("rs3","rsd"),'w',encoding="utf8",newline="\n") as f:
+        print(f"o Processing {rstfile.split(os.sep)[-1]}")
+        output = make_rsd(rstfile, options.root)
+        with io.open(rstfile.replace("rs3", "rsd"), 'w', encoding="utf8", newline="\n") as f:
             f.write(output)
+        file_count += 1
+
+    print(f"Done processing {file_count} files!")

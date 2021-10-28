@@ -90,7 +90,7 @@ def conllu2rsd(conllu):
 
 
 def xml_escape(edu_contents):
-    return edu_contents.replace("&","&amp;").replace(">","&gt;").replace("<","&lt;")
+    return edu_contents.replace("&", "&amp;").replace(">", "&gt;").replace("<", "&lt;")
 
 
 def determinstic_groups(nodes):
