@@ -42,7 +42,7 @@ Input format - .conllu:
 
 """
 
-import io, sys
+import io, sys, os
 from argparse import ArgumentParser
 from rst2dep import NODE
 from collections import defaultdict
@@ -50,7 +50,7 @@ from collections import defaultdict
 # Default relations to include in generated .rs3 header
 DEFAULT_RELATIONS = \
     {"rst":{"antithesis","attribution","background","cause","circumstance","concession","condition","elaboration","evaluation","evidence","justify","manner","means","motivation","preparation","purpose","question","restatement","result","solutionhood"},
-     "multinuc":{"joint","contrast","restatement","same-unit","sequence"}}
+     "multinuc":{"joint","contrast","restatement","same-unit","sequence","disjunction"}}
 
 
 def conllu2rsd(conllu):
@@ -90,7 +90,7 @@ def conllu2rsd(conllu):
 
 
 def xml_escape(edu_contents):
-    return edu_contents.replace("&", "&amp;").replace(">", "&gt;").replace("<", "&lt;")
+    return edu_contents.replace("&","&amp;").replace(">","&gt;").replace("<","&lt;")
 
 
 def determinstic_groups(nodes):
@@ -110,7 +110,7 @@ def determinstic_groups(nodes):
     return id_map
 
 
-def rsd2rs3(rsd, ordering="dist", default_rels=False):
+def rsd2rs3(rsd, ordering="dist", default_rels=False, strict=True):
     nodes = {}
     if default_rels:
         rels = DEFAULT_RELATIONS
@@ -119,6 +119,7 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
     childmap = defaultdict(set)
     lines = rsd.split("\n")
     max_id = 0
+    all_tokens = []
     for line in lines:
         if "\t" in line:
             fields = line.split("\t")
@@ -169,8 +170,8 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
         nodes[nid].depth = path_length
 
     # Add deterministic ordering prioritizing right or left children, if desired
-    left_children = [n for n in sorted(nodes,key=lambda x: nodes[x].parent-nodes[x].left) if nodes[n].parent > nodes[n].id]
-    right_children = [n for n in sorted(nodes,key=lambda x: nodes[x].left-nodes[x].parent) if nodes[n].parent < nodes[n].id]
+    left_children = [n for n in sorted(nodes, key=lambda x: nodes[x].parent-nodes[x].left) if nodes[n].parent > nodes[n].id]
+    right_children = [n for n in sorted(nodes, key=lambda x: nodes[x].left-nodes[x].parent) if nodes[n].parent < nodes[n].id]
     max_dist = 0
     if ordering != "dist":
         if ordering == "ltr":
@@ -184,9 +185,9 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
             max_dist += 1
 
     # Make span based tree, pretending multinucs are all rst relations
-    nids_by_depth = sorted([n for n in nodes],reverse=True, key=lambda x:nodes[x].depth)
+    nids_by_depth = sorted([n for n in nodes], reverse=True, key=lambda x:nodes[x].depth)
     level = 10000
-    max_attached_dist = defaultdict(lambda : -1)
+    max_attached_dist = defaultdict(lambda: -1)
     top_span = {}
     span_by_dist = defaultdict(dict)
     for nid in nids_by_depth:
@@ -239,9 +240,9 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
     header = "<rst>\n\t<header>\n\t\t<relations>\n"
     rel_list = []
     for rel in rels["rst"]:
-        rel_list.append('\t\t\t<rel name="' + rel +'" type="rst"/>')
+        rel_list.append('\t\t\t<rel name="' + rel + '" type="rst"/>')
     for rel in rels["multinuc"]:
-        rel_list.append('\t\t\t<rel name="' + rel +'" type="multinuc"/>')
+        rel_list.append('\t\t\t<rel name="' + rel + '" type="multinuc"/>')
     header += "\n".join(sorted(rel_list)) + "\n\t\t</relations>\n\t</header>\n\t<body>\n"
 
     edus = [n for n in nodes.values() if n.kind == "edu"]
@@ -265,7 +266,45 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
             seg = '\t\t<group id="'+str(id_map[group.id])+'" type="'+group.kind+'" parent="'+str(id_map[group.parent])+'" relname="'+group.relname+'"/>'
         groups_out.append(seg)
 
-    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + "\n\t</body>\n</rst>\n"
+    # Percolate signals up
+    for n in sorted(list(nodes.values()), key=lambda x: int(x.id)):
+        for sig in n.signals:
+            relkind = n.relkind
+            node = n
+            if node.id == 30:
+                a = 4
+            # Check for span on left-most multinuc child with different relation
+            while relkind == "span" or (relkind == "multinuc" and node.dep_rel != node.relname):
+                parent = nodes[node.parent]
+                parent.signals = node.signals
+                node.signals = []
+                relkind = parent.relkind
+                node = parent
+
+    signals_out = []
+    for n in sorted(list(nodes.values()),key=lambda x:int(x.id)):
+        for sig in n.signals:
+            toks = ",".join(sig["ids"])
+            if ":" in sig:
+                stype, subtype = sig["type"].split(":")
+            else:
+                stype = subtype = sig["type"]
+                if stype == "DM":
+                    words = []
+                    for id in sig["ids"]:
+                        if int(id) < len(all_tokens):
+                            words.append(all_tokens[int(id)-1])
+                    subtype = "_".join(words) if len(words) > 0 else "DM"
+
+            stype = sig["type"]
+            xml = f'\t\t\t<signal source="{id_map[n.id]}" type="{stype}" subtype="{subtype}" tokens="{toks}"/>'
+            signals_out.append(xml)
+    if len(signals_out) > 0:
+        signals_out = "\t\t<signals>\n" + "\n".join(signals_out) + "\n\t\t</signals>\n"
+    else:
+        signals_out = ""
+
+    output = header + "\n".join(edus_out) + "\n" + "\n".join(groups_out) + "\n" + signals_out + "\n\t</body>\n</rst>\n"
 
     return output
 
