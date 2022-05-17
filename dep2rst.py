@@ -263,17 +263,36 @@ if __name__ == "__main__":
     desc = "Script to convert discourse dependencies to Rhetorical Structure Theory trees \n in the .rs3 format.\nExample usage:\n\n" + \
             "python dep2rst.py INFILE"
     p = ArgumentParser(description=desc)
-    p.add_argument("file", help="discourse dependency file in .rsd or .conllu format")
-    p.add_argument("-f","--format",choices=["rsd","conllu"],default="rsd",help="input format")
-    p.add_argument("-d","--depth",choices=["ltr","rtl","dist"],default="dist",help="how to order depth")
-    p.add_argument("-r","--rels",action="store_true",help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
+    p.add_argument("--dir", action="store_true", help="input source: a single file or a directory path")
+    p.add_argument("--out", help="output dir for .rs4 files")
+    p.add_argument("--file", help="discourse dependency file in .rsd or .conllu format")
+    p.add_argument("-p", "--path", help="a path to the directory where the .rsd files reside")
+    p.add_argument("-v", "--verbose", action="store_true", help="print .rs3 output")
+    p.add_argument("-f", "--format", choices=["rsd", "conllu"], default="rsd", help="input format")
+    p.add_argument("-d", "--depth", choices=["ltr", "rtl", "dist"], default="dist", help="how to order depth")
+    p.add_argument("-r", "--rels", action="store_true", help="use DEFAULT_RELATIONS for the .rs3 header instead of rels in input data")
 
     opts = p.parse_args()
-    data = io.open(opts.file,encoding="utf8").read()
 
-    if opts.format == "conllu":
-        data = conllu2rsd(data)
+    if opts.dir:
+        counter = 0
+        for file in os.listdir(opts.path):
+            if file.endswith(".rsd"):
+                filename = file.split(".")[0]
+                data = io.open(os.path.join(opts.path, file), encoding="utf8").read()
+                output = rsd2rs3(data, ordering=opts.depth)
+                counter += 1
+                with open(opts.out+os.sep+file, "w", encoding="utf-8") as f:
+                    f.write(output)
+                print(f"Done processing {filename}!")
+        print(f"Done processing {counter} files!")
+    else:
+        data = io.open(opts.file, encoding="utf8").read()
 
-    output = rsd2rs3(data, ordering=opts.depth)
+        if opts.format == "conllu":
+            data = conllu2rsd(data)
 
-    print(output)
+        output = rsd2rs3(data, ordering=opts.depth)
+
+        if opts.verbose:
+            print(output)
