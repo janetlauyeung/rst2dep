@@ -129,21 +129,32 @@ def rsd2rs3(rsd, ordering="dist", default_rels=False):
             depth = int(fields[3]) if fields[3] != "_" else 0
             domain = int(fields[4]) if fields[4] != "_" else 0
             reltype = "multinuc" if fields[7].endswith("_m") else "rst"
-            relation = fields[7].replace("_m","").replace("_r","")
-            if relation != "ROOT" and not default_rels:
-                rels[reltype].add(relation)
-            elif default_rels and relation not in rels[reltype]:
-                sys.stderr.write("! Unlisted relation detected: " + relation + " (" + reltype + ")\n")
-                sys.exit(0)
-            else:
-                relation = "span"
-                if reltype != "multinuc":
-                    reltype = "span"
-            node = NODE(int(eid),int(eid),int(eid),int(head),depth,"edu",contents,relation,reltype)
+            relation = fields[7].replace("_m", "").replace("_r", "")
+            signals = []
+            all_tokens += fields[1].split(" ")
+            # Signals=DM-305;Signals=DM-319,320
+            if "Signals=" in fields[-1]:
+                sigs = fields[-1].split("=", maxsplit=1)[1].strip().replace("Signals=", "").split(";")
+                for sig in sigs:
+                    stype, sids, stoks = sig.split("-", maxsplit=2)  # add maxsplit para to avoid "-" in tokens
+                    sids = sids.split(",")
+                    signals.append({"type": stype, "ids": sids, "toks": stoks})
+            if relation != "ROOT":
+                if not default_rels:
+                    rels[reltype].add(relation)
+                elif default_rels and relation not in rels[reltype]:
+                    sys.stderr.write("! Unlisted relation detected: " + relation + " (" + reltype + ")\n")
+                    if strict:
+                        sys.exit(0)
+                    else:
+                        relation = "span"
+                        if reltype != "multinuc":
+                            reltype = "span"
+            node = NODE(int(eid),int(eid),int(eid),int(head),depth,"edu",contents,relation,reltype,signals)
             node.dist = dist
             node.domain = domain
             node.dep_parent = int(head)
-            nodes[int(eid)]= node
+            nodes[int(eid)] = node
             if head != "0":
                 childmap[int(head)].add(int(eid))
             max_id += 1
